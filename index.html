@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advanced Stopwatch — Icons & Working</title>
+<style>
+/* --------------------------
+   Tokens + Themes
+   -------------------------- */
+:root{
+  --bg: linear-gradient(180deg,#eef2ff,#f7fbff);
+  --card-bg: rgba(255,255,255,0.7);
+  --text: #071028;
+  --muted: #6b7280;
+  --accent: #007aff;
+  --accent-2: #6b21a8;
+  --danger: #ef4444;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(19,38,63,0.08);
+  --glass-blur: 10px;
+  --time-desktop: 64px;
+  --time-mobile: 44px;
+  --ring-r: 50;
+  --ring-circ: 314; /* will be overwritten in JS */
+  --transition: 200ms cubic-bezier(.2,.8,.2,1);
+}
+:root[data-theme='dark']{
+  --bg: linear-gradient(180deg,#070714,#061022);
+  --card-bg: linear-gradient(180deg, rgba(10,12,20,0.6), rgba(10,12,20,0.45));
+  --text: #e6eef9;
+  --muted: #9aa4b2;
+  --accent: #2ea0ff;
+  --accent-2: #9b5cff;
+  --danger: #fb7185;
+  --shadow: 0 10px 30px rgba(2,6,23,0.6);
+  --glass-blur: 8px;
+}
+
+/* Reset */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:28px;
+}
+
+/* App container */
+.app{
+  width:100%;
+  max-width:1100px;
+  display:grid;
+  grid-template-columns:1fr 380px;
+  gap:22px;
+  padding:22px;
+  border-radius:18px;
+  background:var(--card-bg);
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(var(--glass-blur));
+  align-items:start;
+}
+@media (max-width:980px){ .app{ grid-template-columns:1fr; padding:16px } }
+
+/* Header */
+.header{ display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; margin-bottom:6px; }
+.title{ display:flex; gap:12px; align-items:center; }
+.title h1{ font-size:18px; margin:0; }
+.subtle{ color:var(--muted); font-size:13px; }
+
+/* Main area */
+.main{ padding:18px; display:flex; flex-direction:column; gap:8px; align-items:center; }
+
+/* Ring */
+.ring-wrap{ position:relative; width:280px; height:280px; display:flex; align-items:center; justify-content:center; margin:6px 0 12px; }
+@media (max-width:600px){ .ring-wrap{ width:210px; height:210px } }
+.ring{ position:absolute; left:0; top:0; width:100%; height:100%; transform:rotate(-90deg); pointer-events:none; }
+.ring circle{ fill:none; stroke-width:10; stroke-linecap:round; }
+
+/* Time */
+.time-stack{ z-index:2; user-select:none; display:flex; flex-direction:column; align-items:center; }
+.time-main{ font-weight:800; font-size:var(--time-desktop); font-variant-numeric:tabular-nums; letter-spacing:-1px; }
+@media (max-width:600px){ .time-main{ font-size:var(--time-mobile) } }
+.time-ms{ font-size:14px; color:var(--muted); margin-top:6px; font-variant-numeric:tabular-nums; }
+
+/* Controls */
+.controls{ display:flex; gap:12px; align-items:center; justify-content:center; margin-top:12px; }
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  height:52px; padding:0 18px; border-radius:999px; border:0; cursor:pointer;
+  font-weight:700; transition:transform var(--transition), box-shadow var(--transition);
+  min-width:110px; outline:none;
+}
+.btn:active{ transform:scale(.985) }
+.btn:focus-visible{ box-shadow: 0 0 0 4px rgba(0,122,255,0.12) }
+.btn-primary{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:white; box-shadow:0 10px 24px rgba(0,122,255,0.08); }
+.btn-ghost{ background:transparent; color:var(--text); border:1px solid rgba(2,6,23,0.06); }
+.btn-ghost[disabled]{ opacity:0.5; cursor:not-allowed; }
+
+/* Top icon buttons */
+.icon-btn{ width:40px; height:40px; border-radius:10px; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+.icon-btn:focus-visible{ box-shadow: 0 0 0 4px rgba(0,122,255,0.08) }
+
+/* Sidebar */
+.sidebar{ display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:12px; background:transparent; border:1px solid rgba(2,6,23,0.03); min-height:260px; }
+@media (max-width:980px){ .sidebar{ order:2 } }
+
+/* Lap list */
+.lap-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.lap-list{ overflow:auto; max-height:52vh; padding:8px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); }
+.lap-item{ display:flex; align-items:center; gap:8px; justify-content:space-between; padding:10px; border-radius:10px; transition:background .2s, transform .2s; }
+.lap-item + .lap-item{ margin-top:8px; }
+.lap-left{ font-weight:700; color:var(--muted); width:68px; }
+.lap-mid{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace; font-variant-numeric:tabular-nums; flex:1; color:var(--text); }
+.lap-right{ width:120px; text-align:right; font-weight:700; color:var(--muted); }
+.lap-fast{ background:linear-gradient(90deg, rgba(34,197,94,0.06), transparent); border-left:4px solid #16a34a; }
+.lap-slow{ background:linear-gradient(90deg, rgba(239,68,68,0.06), transparent); border-left:4px solid var(--danger); }
+
+/* settings toggles */
+.toggle{ width:46px; height:28px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; border:0; cursor:pointer; display:inline-block; }
+.toggle.on{ background:linear-gradient(90deg,var(--accent), var(--accent-2)); }
+.knob{ position:absolute; top:4px; left:4px; width:20px; height:20px; border-radius:50%; background:white; box-shadow:0 6px 12px rgba(2,6,23,0.08); transition:left var(--transition); }
+.toggle.on .knob{ left:22px; }
+
+/* toast & hidden */
+.toast{ position:fixed; left:50%; bottom:32px; transform:translateX(-50%); background:rgba(2,6,23,0.9); color:white; padding:10px 14px; border-radius:12px; display:flex; gap:10px; align-items:center; box-shadow:0 12px 40px rgba(2,6,23,0.5); z-index:9999; }
+.sr-only{ position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* small helpers */
+.small{ font-size:13px; color:var(--muted); }
+.hint{ font-size:12px; color:var(--muted); text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+  <main class="app" id="app" role="application" aria-label="Advanced stopwatch with icons">
+    <!-- LEFT -->
+    <section class="main" aria-labelledby="sw-title">
+      <div class="header">
+        <div class="title">
+          <!-- small badge icon -->
+          <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true">
+            <defs><linearGradient id="logoGrad" x1="0" x2="1"><stop offset="0" stop-color="#007aff"/><stop offset="1" stop-color="#6b21a8"/></linearGradient></defs>
+            <rect width="24" height="24" rx="6" fill="url(#logoGrad)" opacity="0.12"></rect>
+            <path d="M12 7v6l4 2" stroke="url(#logoGrad)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <div>
+            <h1 id="sw-title">Stopwatch</h1>
+            <div class="subtle">Accurate timing • Laps • Export • Keyboard</div>
+          </div>
+        </div>
+
+        <div role="toolbar" aria-label="Top actions" style="display:flex;gap:8px;">
+          <!-- theme toggle -->
+          <button id="themeToggle" class="icon-btn" aria-pressed="false" title="Toggle theme" aria-label="Toggle theme">
+            <!-- sun/moon svg toggled by JS -->
+            <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+              <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
+            </svg>
+          </button>
+
+          <!-- export -->
+          <button id="exportBtn" class="icon-btn" title="Export laps (download CSV)" aria-label="Export laps">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3v12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              <path d="M5 12l7 7 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+
+          <!-- settings (dummy) -->
+          <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              <path d="M19.4 15a1.8 1.8 0 00.16 1.95l.04.05a2 2 0 01-2.83 2.82l-.06-.04a1.8 1.8 0 00-1.95-.16 1.8 1.8 0 00-1.02 1.6v.3a2 2 0 01-4 0v-.3a1.8 1.8 0 00-1.02-1.6 1.8 1.8 0 00-1.95.16l-.06.04A2 2 0 015.5 16.99l.04-.06a1.8 1.8 0 00.16-1.95 1.8 1.8 0 00-1.6-1.02h-.3a2 2 0 010-4h.3a1.8 1.8 0 001.6-1.02 1.8 1.8 0 00-.16-1.95L5.5 4.6A2 2 0 018.33 1.78l.05.04A1.8 1.8 0 0010.33 2.98 1.8 1.8 0 0012 1.38h0a2 2 0 014 0h0a1.8 1.8 0 001.67 1.6c.7.1 1.28.64 1.62 1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ring + time -->
+      <div class="ring-wrap" aria-hidden="false">
+        <svg class="ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" x2="1">
+              <stop offset="0%" stop-color="var(--accent)"></stop>
+              <stop offset="100%" stop-color="var(--accent-2)"></stop>
+            </linearGradient>
+          </defs>
+          <!-- background ring -->
+          <circle cx="60" cy="60" r="50" stroke="rgba(2,6,23,0.06)" stroke-width="10"/>
+          <!-- progress -->
+          <circle id="progressRing" cx="60" cy="60" r="50" stroke="url(#ringGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="314"/>
+        </svg>
+
+        <div class="time-stack" role="status" aria-live="polite" aria-atomic="true">
+          <div id="timeMain" class="time-main" aria-label="Elapsed time">00:00:00</div>
+          <div id="timeMs" class="time-ms" aria-hidden="true">.000</div>
+        </div>
+      </div>
+
+      <!-- controls -->
+      <div class="controls" role="group" aria-label="Primary controls">
+        <button id="startPauseBtn" class="btn btn-primary" aria-pressed="false" aria-label="Start stopwatch">
+          <span id="playPauseWrap" style="display:inline-flex;align-items:center;gap:8px;">
+            <!-- Play icon -->
+            <svg id="playIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 3v18l15-9L5 3z" fill="white"></path>
+            </svg>
+            <!-- Pause icon (hidden by default) -->
+            <svg id="pauseIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none" aria-hidden="true">
+              <rect x="6" y="5" width="4" height="14" rx="1.5" fill="white"></rect>
+              <rect x="14" y="5" width="4" height="14" rx="1.5" fill="white"></rect>
+            </svg>
+            <span id="startLabel">Start</span>
+          </span>
+        </button>
+
+        <button id="lapBtn" class="btn btn-ghost" aria-disabled="true" disabled aria-label="Record lap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Lap
+        </button>
+
+        <button id="resetBtn" class="btn btn-ghost" disabled aria-label="Reset stopwatch">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Reset
+        </button>
+      </div>
+
+      <div class="hint">Shortcuts: <strong>Space</strong> Start/Pause • <strong>L</strong> Lap • <strong>R</strong> Reset (when paused)</div>
+    </section>
+
+    <!-- RIGHT -->
+    <aside class="sidebar" aria-labelledby="sidebar-title">
+      <div class="lap-header">
+        <div>
+          <div class="small">Laps</div>
+          <div id="lapCount" class="subtle">0 recorded</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="sortBtn" class="icon-btn" title="Toggle newest/oldest" aria-label="Toggle sort">Newest</button>
+          <button id="clearAllBtn" class="icon-btn" title="Clear laps" aria-label="Clear laps">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 6v-1a2 2 0 012-2h4a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="lapList" class="lap-list" role="list" aria-label="Lap list">
+        <div class="subtle" id="emptyMsg" style="padding:18px;text-align:center;">No laps yet — record one while running</div>
+      </div>
+
+      <div class="settings" role="region" aria-label="Settings">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div class="small">Precision</div>
+            <div class="subtle">Show milliseconds</div>
+          </div>
+          <button id="msToggle" class="toggle on" title="Toggle milliseconds" aria-pressed="true"><div class="knob"></div></button>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+          <div>
+            <div class="small">Theme</div>
+            <div class="subtle">Light / Dark (saved)</div>
+          </div>
+          <button id="themeToggleRow" class="toggle" title="Toggle theme" aria-pressed="false"><div class="knob"></div></button>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button id="exportCSV" class="btn btn-ghost" style="flex:1" title="Download CSV">Export CSV</button>
+          <button id="copyCSV" class="btn btn-ghost" style="width:120px" title="Copy CSV">Copy</button>
+        </div>
+      </div>
+
+      <div class="small" style="margin-top:auto;">Display updates every 100ms • Tap or use keyboard</div>
+    </aside>
+  </main>
+
+  <!-- toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite" style="display:none;">
+    <div id="toastMsg">Reset — Undo</div>
+    <button id="undoBtn" class="btn btn-ghost" style="height:36px;padding:6px 10px">Undo</button>
+  </div>
+
+  <div class="sr-only" id="announcer" aria-live="polite"></div>
+
+<script>
+/* Fully working stopwatch with inline icons */
+(function(){
+  // Elements
+  const root = document.documentElement;
+  const themeToggle = document.getElementById('themeToggle');
+  const themeToggleRow = document.getElementById('themeToggleRow');
+  const themeIcon = document.getElementById('themeIcon');
+
+  const startPauseBtn = document.getElementById('startPauseBtn');
+  const playIcon = document.getElementById('playIcon');
+  const pauseIcon = document.getElementById('pauseIcon');
+  const startLabel = document.getElementById('startLabel');
+
+  const lapBtn = document.getElementById('lapBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const timeMain = document.getElementById('timeMain');
+  const timeMs = document.getElementById('timeMs');
+  const progressRing = document.getElementById('progressRing');
+
+  const exportBtn = document.getElementById('exportBtn');
+  const exportCSV = document.getElementById('exportCSV');
+  const copyCSV = document.getElementById('copyCSV');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  const sortBtn = document.getElementById('sortBtn');
+
+  const lapList = document.getElementById('lapList');
+  const lapCount = document.getElementById('lapCount');
+  const emptyMsg = document.getElementById('emptyMsg');
+
+  const msToggle = document.getElementById('msToggle');
+  const toast = document.getElementById('toast');
+  const toastMsg = document.getElementById('toastMsg');
+  const undoBtn = document.getElementById('undoBtn');
+  const announcer = document.getElementById('announcer');
+
+  // State
+  let running = false;
+  let startTime = 0;
+  let elapsedBefore = 0;
+  let raf = null;
+  let laps = [];
+  let sortNewestFirst = true;
+  let showMs = true;
+  let undoState = null;
+  let toastTimer = null;
+
+  // Ring values
+  const R = 50;
+  const CIRC = 2 * Math.PI * R;
+  progressRing.style.strokeDasharray = String(CIRC);
+  progressRing.style.strokeDashoffset = String(CIRC);
+
+  // Utils
+  function pad(n, l=2){ return String(n).padStart(l,'0'); }
+  function breakdown(ms){
+    const total = Math.max(0, Math.floor(ms));
+    const h = Math.floor(total / 3600000);
+    const m = Math.floor((total % 3600000) / 60000);
+    const s = Math.floor((total % 60000) / 1000);
+    const mill = total % 1000;
+    return {h,m,s,mill};
+  }
+  function format(ms){
+    const p = breakdown(ms);
+    return { main: `${pad(p.h)}:${pad(p.m)}:${pad(p.s)}`, ms: '.' + pad(p.mill,3) };
+  }
+
+  function updateDisplay(ms){
+    const out = format(ms);
+    timeMain.textContent = out.main;
+    if(showMs){
+      timeMs.textContent = out.ms;
+      timeMs.style.display = 'block';
+    } else {
+      timeMs.style.display = 'none';
+    }
+    // Ring: fraction of 60 seconds
+    const secondsTotal = (ms / 1000) % 60;
+    const frac = secondsTotal / 60;
+    const dash = CIRC * (1 - frac);
+    progressRing.style.strokeDashoffset = String(dash);
+  }
+
+  // Timer loop
+  function tick(){
+    const now = performance.now();
+    const elapsed = (now - startTime) + elapsedBefore;
+    updateDisplay(elapsed);
+    raf = requestAnimationFrame(tick);
+  }
+
+  // Start/Pause/Toggle
+  function start(){
+    if(running) return;
+    running = true;
+    startTime = performance.now();
+    startLabel.textContent = 'Pause';
+    startPauseBtn.setAttribute('aria-pressed','true');
+    playIcon.style.display = 'none';
+    pauseIcon.style.display = 'inline';
+    lapBtn.disabled = false;
+    lapBtn.classList.remove('disabled');
+    resetBtn.disabled = true;
+    resetBtn.classList.add('disabled');
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(tick);
+    announce('Started');
+  }
+  function pause(){
+    if(!running) return;
+    running = false;
+    const now = performance.now();
+    elapsedBefore = (now - startTime) + elapsedBefore;
+    if(raf) cancelAnimationFrame(raf);
+    raf = null;
+    startLabel.textContent = 'Start';
+    startPauseBtn.setAttribute('aria-pressed','false');
+    playIcon.style.display = 'inline';
+    pauseIcon.style.display = 'none';
+    lapBtn.disabled = true;
+    lapBtn.classList.add('disabled');
+    resetBtn.disabled = false;
+    resetBtn.classList.remove('disabled');
+    updateDisplay(elapsedBefore);
+    announce('Paused');
+  }
+  function toggle(){
+    running ? pause() : start();
+  }
+
+  // Reset with undo
+  function reset(){
+    if(running) return;
+    undoState = { elapsedBefore, laps: JSON.parse(JSON.stringify(laps)) };
+    elapsedBefore = 0;
+    updateDisplay(0);
+    laps = [];
+    renderLaps();
+    showToast('Reset — Undo', 5000);
+    announce('Reset completed. You can undo.');
+  }
+  function undoReset(){
+    if(!undoState) return;
+    elapsedBefore = undoState.elapsedBefore;
+    laps = JSON.parse(JSON.stringify(undoState.laps));
+    updateDisplay(elapsedBefore);
+    renderLaps();
+    undoState = null;
+    hideToast();
+    announce('Reset undone.');
+  }
+
+  // Lap recording
+  function recordLap(){
+    if(!running) return;
+    const now = performance.now();
+    const totalMs = Math.floor((now - startTime) + elapsedBefore);
+    let prevTotal = 0;
+    if(laps.length > 0) prevTotal = laps[laps.length - 1].lapTimeMs;
+    const split = totalMs - prevTotal;
+    const lapObj = {
+      id: Date.now() + Math.random(),
+      lapNumber: laps.length + 1,
+      lapTimeMs: totalMs,
+      splitTimeMs: split,
+      timestamp: new Date().toISOString()
+    };
+    laps.push(lapObj);
+    renderLaps(true);
+    announce('Lap ' + lapObj.lapNumber + ' recorded.');
+  }
+
+  // Render laps
+  function renderLaps(animateNew=false){
+    let min = Infinity, max = -Infinity;
+    laps.forEach(l=>{ if(l.splitTimeMs < min) min = l.splitTimeMs; if(l.splitTimeMs > max) max = l.splitTimeMs; });
+    const arr = sortNewestFirst ? [...laps].reverse() : [...laps];
+    lapList.innerHTML = '';
+    if(arr.length === 0){
+      lapList.appendChild(emptyMsg);
+      lapCount.textContent = '0 recorded';
+      return;
+    }
+    if(emptyMsg.parentElement) emptyMsg.remove();
+    arr.forEach((l, idx) => {
+      const row = document.createElement('div');
+      row.className = 'lap-item';
+      if(l.splitTimeMs === min) row.classList.add('lap-fast');
+      if(l.splitTimeMs === max) row.classList.add('lap-slow');
+
+      const left = document.createElement('div'); left.className='lap-left';
+      const index = sortNewestFirst ? (laps.length - idx) : (idx + 1);
+      left.textContent = 'Lap ' + index;
+
+      const mid = document.createElement('div'); mid.className='lap-mid';
+      const mf = format(l.lapTimeMs);
+      mid.textContent = mf.main + (showMs ? mf.ms : '');
+
+      const right = document.createElement('div'); right.className='lap-right';
+      const sf = format(l.splitTimeMs);
+      right.textContent = (showMs ? (sf.main + sf.ms) : sf.main);
+
+      const del = document.createElement('button'); del.className='icon-btn'; del.title='Delete lap'; del.setAttribute('aria-label','Delete lap ' + index);
+      del.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      del.addEventListener('click', (e)=>{ e.stopPropagation(); deleteLap(l.id); });
+
+      row.appendChild(left);
+      row.appendChild(mid);
+      row.appendChild(right);
+      row.appendChild(del);
+
+      lapList.appendChild(row);
+
+      if(animateNew){
+        row.style.opacity='0';
+        row.style.transform='translateY(-6px)';
+        requestAnimationFrame(()=>{ row.style.transition='transform 200ms ease, opacity 200ms ease'; row.style.opacity='1'; row.style.transform='none'; });
+      }
+    });
+    lapCount.textContent = `${laps.length} recorded`;
+  }
+
+  function deleteLap(id){
+    const idx = laps.findIndex(x=>x.id===id);
+    if(idx>=0){
+      laps.splice(idx,1);
+      laps = laps.map((l,i)=>({...l, lapNumber:i+1}));
+      renderLaps();
+      announce('Lap deleted.');
+    }
+  }
+
+  // CSV export and copy
+  function buildCSV(){
+    const header = ['Lap','Lap Time (HH:MM:SS.MS)','Split (HH:MM:SS.MS)','Timestamp'];
+    const rows = laps.map((l,i)=>{
+      const lapFmt = format(l.lapTimeMs).main + (showMs ? format(l.lapTimeMs).ms : '');
+      const splitFmt = format(l.splitTimeMs).main + (showMs ? format(l.splitTimeMs).ms : '');
+      return [i+1, lapFmt, splitFmt, l.timestamp];
+    });
+    return [header, ...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  }
+  function downloadCSV(){
+    if(laps.length === 0){ alert('No laps to export.'); return; }
+    const csv = buildCSV();
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='stopwatch_laps.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    showToast('Exported CSV');
+  }
+  function copyCSVToClipboard(){
+    if(laps.length === 0){ alert('No laps to copy.'); return; }
+    const csv = buildCSV();
+    navigator.clipboard?.writeText(csv).then(()=> showToast('Copied CSV to clipboard') ).catch(()=> { alert('Copy failed — check clipboard permissions.'); });
+  }
+
+  // Clear, sort
+  function clearAllLaps(){
+    if(!confirm('Clear all laps?')) return;
+    laps = [];
+    renderLaps();
+    announce('All laps cleared.');
+  }
+  function toggleSort(){
+    sortNewestFirst = !sortNewestFirst;
+    sortBtn.textContent = sortNewestFirst ? 'Newest' : 'Oldest';
+    renderLaps();
+  }
+
+  // Toast
+  function showToast(msg, timeout=3000){
+    toastMsg.textContent = msg;
+    toast.style.display = 'flex';
+    if(toastTimer) clearTimeout(toastTimer);
+    if(timeout>0) toastTimer = setTimeout(hideToast, timeout);
+  }
+  function hideToast(){ toast.style.display='none'; if(toastTimer){ clearTimeout(toastTimer); toastTimer=null; } }
+
+  // Announce
+  function announce(text){
+    announcer.textContent = '';
+    setTimeout(()=> announcer.textContent = text, 60);
+  }
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if(tag==='input' || tag==='textarea') return;
+    if(e.code === 'Space'){ e.preventDefault(); toggle(); }
+    if(e.key.toLowerCase() === 'l'){ e.preventDefault(); recordLap(); }
+    if(e.key.toLowerCase() === 'r'){ e.preventDefault(); if(!running) reset(); }
+  });
+
+  // Theme
+  function setTheme(theme, save=true){
+    if(theme === 'dark'){ root.setAttribute('data-theme','dark'); themeToggle.setAttribute('aria-pressed','true'); themeToggleRow.classList.add('on'); }
+    else { root.removeAttribute('data-theme'); themeToggle.setAttribute('aria-pressed','false'); themeToggleRow.classList.remove('on'); }
+    if(save) localStorage.setItem('sw_theme', theme);
+    // set theme icon
+    if(theme === 'dark'){
+      themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="currentColor"/>';
+    } else {
+      themeIcon.innerHTML = '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>';
+    }
+  }
+  function initTheme(){
+    const saved = localStorage.getItem('sw_theme');
+    let theme = saved;
+    if(!theme){ const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; theme = prefersDark ? 'dark' : 'light'; }
+    setTheme(theme, false);
+  }
+  themeToggle.addEventListener('click', ()=>{ const current = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; setTheme(current); });
+  themeToggleRow.addEventListener('click', ()=>{ const current = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; setTheme(current); });
+
+  // ms toggle visual
+  function setMs(on){
+    showMs = !!on;
+    if(on) msToggle.classList.add('on'); else msToggle.classList.remove('on');
+    localStorage.setItem('sw_ms', on ? '1' : '0');
+    renderLaps();
+    updateDisplay(elapsedBefore);
+  }
+  msToggle.addEventListener('click', ()=> setMs(!msToggle.classList.contains('on')) );
+
+  // Wiring buttons
+  startPauseBtn.addEventListener('click', toggle);
+  lapBtn.addEventListener('click', recordLap);
+  resetBtn.addEventListener('click', reset);
+  undoBtn.addEventListener('click', undoReset);
+
+  exportBtn.addEventListener('click', downloadCSV);
+  exportCSV.addEventListener('click', downloadCSV);
+  copyCSV.addEventListener('click', copyCSVToClipboard);
+
+  clearAllBtn.addEventListener('click', clearAllLaps);
+  sortBtn.addEventListener('click', toggleSort);
+
+  // export function name conflict avoid
+  function downloadCSV(){ downloadCSV_impl(); }
+  function downloadCSV_impl(){
+    if(laps.length === 0){ alert('No laps to export.'); return; }
+    const csv = buildCSV();
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'stopwatch_laps.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    showToast('Exported CSV');
+  }
+
+  // init preferences and display
+  function init(){
+    initTheme();
+    const msSaved = localStorage.getItem('sw_ms');
+    setMs(msSaved === null ? true : msSaved === '1');
+    updateDisplay(0);
+    renderLaps();
+    // initial visual states
+    playIcon.style.display = 'inline'; pauseIcon.style.display = 'none';
+    lapBtn.disabled = true; lapBtn.classList.add('disabled');
+    resetBtn.disabled = true; resetBtn.classList.add('disabled');
+    // set ring size correctly (recalc)
+    const r = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ring-r')) || 50;
+    const circ = 2*Math.PI*r;
+    progressRing.style.strokeDasharray = String(circ);
+    progressRing.style.strokeDashoffset = String(circ);
+  }
+  init();
+
+  // cleanup on unload
+  window.addEventListener('beforeunload', ()=>{ if(raf) cancelAnimationFrame(raf); });
+
+})();
+</script>
+</body>
+</html>
